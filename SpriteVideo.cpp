@@ -2,9 +2,9 @@
 #include "AppFrame.h"
 #include "VideoHeader.h"
 
-#define INFO(_str, ...) LINFO("[VID] %m: " _str, __func__, ##__VA_ARGS__)
-#define WARN(_str,...) LWARNING("[VID] %m: " _str, __func__, ##__VA_ARGS__)
-#define ERRO(_str, ...) LERROR("[VID] %m: " _str, __func__, ##__VA_ARGS__)
+#define INFO(_str, ...) LINFO("[VID] %s: " _str, __func__, ##__VA_ARGS__)
+#define WARN(_str,...) LWARNING("[VID] %s: " _str, __func__, ##__VA_ARGS__)
+#define ERRO(_str, ...) LERROR("[VID] %s: " _str, __func__, ##__VA_ARGS__)
 
 using namespace cocos2d;
 using namespace xVideo;

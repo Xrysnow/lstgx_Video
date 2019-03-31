@@ -2,9 +2,9 @@
 #include "platform/CCPlatformConfig.h"
 #include "../LSTG/LogSystem.h"
 
-#define VINFO(_str, ...) LINFO("[VID] %m: " _str, __func__, ##__VA_ARGS__)
-#define VWARN(_str,...) LWARNING("[VID] %m: " _str, __func__, ##__VA_ARGS__)
-#define VERRO(_str, ...) LERROR("[VID] %m: " _str, __func__, ##__VA_ARGS__)
+#define VINFO(_str, ...) LINFO("[VID] %s: " _str, __func__, ##__VA_ARGS__)
+#define VWARN(_str,...) LWARNING("[VID] %s: " _str, __func__, ##__VA_ARGS__)
+#define VERRO(_str, ...) LERROR("[VID] %s: " _str, __func__, ##__VA_ARGS__)
 
 #if CC_TARGET_PLATFORM == CC_PLATFORM_WIN32
 #define av_sprintf sprintf_s
