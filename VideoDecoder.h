@@ -2,9 +2,8 @@
 
 #include <cstdint>
 #include "cocos2d.h"
-#include "platform/CCPlatformDefine.h"
-#include "../fcyLib/fcyStream.h"
 #include "VideoHeader.h"
+#include "VideoStream.h"
 
 namespace xVideo
 {
@@ -14,7 +13,7 @@ namespace xVideo
 		static VideoDecoder* create(const char* path);
 
 		bool open(const char* path);
-		bool open(fcyStream* stream, double loopA = 0, double loopB = -1);
+		bool open(VideoStream* stream, double loopA = 0, double loopB = -1);
 
 		void setup();
 		void setup(cocos2d::Size target_size);
@@ -44,7 +43,7 @@ namespace xVideo
 		VideoDecoder();
 		~VideoDecoder();
 		bool _isOpened = false;
-		fcyStream* stream = nullptr;
+		VideoStream* stream = nullptr;
 
 		uint32_t raw_width = 0;
 		uint32_t raw_height = 0;

@@ -48,7 +48,7 @@ static void lazyInit()
 			inf += "\n";
 			c_temp = c_temp->next;
 		}
-		//VINFO("supported codec:\n%m", inf.c_str());
+		//VINFO("supported codec:\n%s", inf.c_str());
 		auto ch_temp = av_hwaccel_next(nullptr);
 		inf = "";
 		while (ch_temp != nullptr)
@@ -78,7 +78,7 @@ static void lazyInit()
 			inf += "\n";
 			ch_temp = ch_temp->next;
 		}
-		VINFO("supported hardware codec:\n%m", inf.c_str());
+		VINFO("supported hardware codec:\n%s", inf.c_str());
 	}
 }
 
@@ -101,7 +101,7 @@ bool VideoDecoder::open(const char* path)
 	filePath = FileUtils::getInstance()->fullPathForFilename(path);
 	if (filePath.empty())
 	{
-		VERRO("no file: %m", path);
+		VERRO("no file: %s", path);
 		return false;
 	}
 	lazyInit();
@@ -156,7 +156,7 @@ bool VideoDecoder::open(const char* path)
 	}
 	// open codec
 	if (avcodec_open2(pCodecCtx, pCodecV, nullptr)) {
-		VERRO("can't open video codec [%m]", pCodecV->name);
+		VERRO("can't open video codec [%s]", pCodecV->name);
 		return false;
 	}
 	// get rational
@@ -202,10 +202,11 @@ bool VideoDecoder::open(const char* path)
 	return true;
 }
 
-bool VideoDecoder::open(fcyStream* src, double loopA, double loopB)
+bool VideoDecoder::open(VideoStream* src, double loopA, double loopB)
 {
 	if (_isOpened || !src)
 		return false;
+	//TODO:
 	return true;
 }
 
@@ -269,7 +270,7 @@ void VideoDecoder::close()
 		if (stream)
 		{
 			VINFO("stream ref = %d", stream->getReferenceCount());
-			stream->SetPosition(BEG, 0);
+			stream->seek(VideoStream::SeekOrigin::BEGINNING, 0);
 			stream->release();
 			stream = nullptr;
 		}
@@ -297,7 +298,7 @@ uint32_t VideoDecoder::read(uint8_t** vbuf)
 			if (ret < 0) {
 				char str[64] = { 0 };
 				av_strerror(ret, str, 64);
-				VERRO("decode error: %m", str);
+				VERRO("decode error: %s", str);
 				av_free_packet(packet);
 				//break;
 				return 0;
@@ -497,7 +498,7 @@ void VideoDecoder::setVideoInfo(bool print)
 	readableInfo = inf;
 	if (print)
 	{
-		VINFO("videoInfo:\n%m", inf.c_str());
+		VINFO("videoInfo:\n%s", inf.c_str());
 	}
 }
 
