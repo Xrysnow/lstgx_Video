@@ -12,73 +12,86 @@ static void lazyInit()
 	static bool inited = false;
 	if (!inited)
 	{
-		av_register_all();
 		inited = true;
-		auto c_temp =
-			av_codec_next(nullptr);
-			//av_hwaccel_next(nullptr);
-		string inf;
-		while (c_temp != nullptr)
-		{
-			if (c_temp->decode != nullptr)
-			{
-				inf += "[Decode]";
-			}
-			else
-			{
-				inf += "[Encode]";
-			}
-			switch (c_temp->type)
-			{
-			case AVMEDIA_TYPE_VIDEO:
-				inf += "[Video] ";
-				break;
-			case AVMEDIA_TYPE_AUDIO:
-				inf += "[Audio] ";
-				break;
-			default:
-				inf += "[Other] ";
-				break;
-			}
-			if(c_temp->name)
-				inf += c_temp->name;
-			inf += " | ";
-			if (c_temp->long_name)
-				inf += c_temp->long_name;
-			inf += "\n";
-			c_temp = c_temp->next;
+		void* opaque = nullptr;
+
+		std::string protocol_in = "input protocol:";
+		auto pro_in = avio_enum_protocols(&opaque, 0);
+		while (pro_in != nullptr) {
+			protocol_in += " ";
+			protocol_in += pro_in;
+			pro_in = avio_enum_protocols(&opaque, 0);
 		}
-		//VINFO("supported codec:\n%s", inf.c_str());
-		auto ch_temp = av_hwaccel_next(nullptr);
-		inf = "";
-		while (ch_temp != nullptr)
-		{
-			//if (ch_temp->name != nullptr)
-			//{
-			//	inf += "[Decode]";
-			//}
-			//else
-			//{
-			//	inf += "[Encode]";
-			//}
-			switch (ch_temp->type)
-			{
-			case AVMEDIA_TYPE_VIDEO:
-				inf += "[Video] ";
-				break;
-			case AVMEDIA_TYPE_AUDIO:
-				inf += "[Audio] ";
-				break;
-			default:
-				inf += "[Other] ";
-				break;
-			}
-			if (ch_temp->name)
-				inf += ch_temp->name;
-			inf += "\n";
-			ch_temp = ch_temp->next;
+		opaque = nullptr;
+		std::string protocol_out = "output protocol:";
+		auto pro_out = avio_enum_protocols(&opaque, 1);
+		while (pro_out != nullptr) {
+			protocol_out += " ";
+			protocol_out += pro_out;
+			pro_out = avio_enum_protocols(&opaque, 1);
 		}
-		VINFO("supported hardware codec:\n%s", inf.c_str());
+		opaque = nullptr;
+		std::string demuxer = "demuxer:";
+		auto inputFormat = av_demuxer_iterate(&opaque);
+		while (inputFormat != nullptr) {
+			demuxer += " ";
+			demuxer += inputFormat->name;
+			inputFormat = av_demuxer_iterate(&opaque);
+		}
+		opaque = nullptr;
+		std::string muxer = "muxer:";
+		auto outputFormat = av_muxer_iterate(&opaque);
+		while (outputFormat != nullptr) {
+			muxer += " ";
+			muxer += outputFormat->name;
+			outputFormat = av_muxer_iterate(&opaque);
+		}
+		opaque = nullptr;
+		std::string encoder = "encoder:";
+		std::string decoder = "decoder:";
+		std::string encoder_hw = "encoder_hw:";
+		std::string decoder_hw = "decoder_hw:";
+		auto avCodec = av_codec_iterate(&opaque);
+		while (avCodec != nullptr) {
+			std::string name;
+			if (avCodec->name)
+				name += avCodec->name;
+			if (avCodec->long_name)
+				name += "(" + std::string(avCodec->long_name) + ")";
+			if (name.empty())
+				name = "UNKNOWN";
+			name = " " + name;
+			if (av_codec_is_encoder(avCodec)) {
+				if (avcodec_get_hw_config(avCodec, 0))
+					encoder_hw += name;
+				else
+					encoder += name;
+			}
+			if (av_codec_is_decoder(avCodec)) {
+				if (avcodec_get_hw_config(avCodec, 0))
+					decoder_hw += name;
+				else
+					decoder += name;
+			}
+			avCodec = av_codec_iterate(&opaque);
+		}
+		opaque = nullptr;
+		std::string bsf = "bsf:";
+		auto bsf_ = av_bsf_iterate(&opaque);
+		while (bsf_ != nullptr) {
+			bsf += bsf_->name;
+			bsf_ = av_bsf_iterate(&opaque);
+		}
+
+		VINFO("%s", protocol_in.c_str());
+		VINFO("%s", protocol_out.c_str());
+		VINFO("%s", demuxer.c_str());
+		VINFO("%s", muxer.c_str());
+		VINFO("%s", encoder.c_str());
+		VINFO("%s", encoder_hw.c_str());
+		VINFO("%s", decoder.c_str());
+		VINFO("%s", decoder_hw.c_str());
+		VINFO("%s", bsf.c_str());
 	}
 }
 
@@ -94,14 +107,14 @@ VideoDecoder* VideoDecoder::create(const char* path)
 	return nullptr;
 }
 
-bool VideoDecoder::open(const char* path)
+bool VideoDecoder::open(const std::string& path)
 {
 	if (_isOpened)
 		return false;
 	filePath = FileUtils::getInstance()->fullPathForFilename(path);
 	if (filePath.empty())
 	{
-		VERRO("no file: %s", path);
+		VERRO("no file: %s", path.c_str());
 		return false;
 	}
 	lazyInit();
@@ -123,7 +136,14 @@ bool VideoDecoder::open(const char* path)
 	idxVideo = -1;
 	idxAudio = -1;
 	for (int i = 0; i < pFormatCtx->nb_streams; i++) {
-		auto type = pFormatCtx->streams[i]->codec->codec_type;
+		auto pAVCodecContext = avcodec_alloc_context3(nullptr);
+		if (!pAVCodecContext) {
+			VERRO("avcodec_alloc_context3 failed");
+			break;
+		}
+		avcodec_parameters_to_context(pAVCodecContext, pFormatCtx->streams[i]->codecpar);
+		const auto type = pAVCodecContext->codec_type;
+		avcodec_free_context(&pAVCodecContext);
 		if (idxVideo == -1 && type == AVMEDIA_TYPE_VIDEO) {
 			idxVideo = i;
 		}
@@ -140,17 +160,25 @@ bool VideoDecoder::open(const char* path)
 		return false;
 	}
 	// Get a pointer to the codec context for the video stream
-	pCodecCtx = pFormatCtx->streams[idxVideo]->codec;
+	pCodecCtx = avcodec_alloc_context3(nullptr);
+	if (!pCodecCtx) {
+		VERRO("avcodec_alloc_context3 failed");
+		return false;
+	}
+	avcodec_parameters_to_context(pCodecCtx, pFormatCtx->streams[idxVideo]->codecpar);
 	//auto codec_id = pFormatCtx->streams[idxVideo]->codecpar->codec_id;
 
 	// Find the decoder for the video stream
 	pCodecV = avcodec_find_decoder(pCodecCtx->codec_id);
 	if (pCodecCtx->codec_id == AV_CODEC_ID_H264)
 	{
-		pCodecV = avcodec_find_decoder_by_name("h264_cuvid");
-		//pCodecV = avcodec_find_decoder_by_name("h264_qsv");
+		auto codec_hw = avcodec_find_decoder_by_name("h264_qsv");
+		if(!codec_hw)
+			codec_hw = avcodec_find_decoder_by_name("h264_cuvid");
+		if (codec_hw)
+			pCodecV = codec_hw;
 	}
-	if (pCodecV == nullptr) {
+	if (!pCodecV) {
 		VERRO("can't get video decoder");
 		return false;
 	}
@@ -164,21 +192,18 @@ bool VideoDecoder::open(const char* path)
 	if (!rational.num || !rational.den)
 		rational = pFormatCtx->streams[idxVideo]->r_frame_rate;
 
-	// calc duration
-	int64_t duration = 0;
 	if (pFormatCtx->duration != AV_NOPTS_VALUE) {
-		/*int hours, mins, secs, us;*/
-		duration = pFormatCtx->duration;// +5000;
-		auto secs = duration / AV_TIME_BASE;
-		auto us = duration % AV_TIME_BASE;
-		//VINFO("duration = %d.%d", secs, (100 * us) / AV_TIME_BASE);
+		const auto duration = pFormatCtx->duration;// +5000;
+		const auto secs = duration / AV_TIME_BASE;
+		const auto us = duration % AV_TIME_BASE;
+		durationCtx = secs + (double)us / AV_TIME_BASE;
 	}
 	else {
 		VERRO("can't get duration");
 		return false;
 	}
 
-	double fps = av_q2d(rational);
+	const double fps = av_q2d(rational);
 	frame_dt = 1.0 / fps;
 	totalFrames = pFormatCtx->streams[idxVideo]->nb_frames;
 	
@@ -195,7 +220,7 @@ bool VideoDecoder::open(const char* path)
 	raw_height = pCodecCtx->height;
 	timeBaseV = pFormatCtx->streams[idxVideo]->time_base;
 	//timeBaseA = pFormatCtx->streams[idxAudio]->time_base;
-	durationV = pFormatCtx->streams[idxVideo]->duration*av_q2d(timeBaseV);
+	durationV = pFormatCtx->streams[idxVideo]->duration * av_q2d(timeBaseV);
 	//avcodec_find_encoder_by_name("");
 	_isOpened = true;
 	setVideoInfo(true);
@@ -215,21 +240,36 @@ void VideoDecoder::setup()
 	setup(Size(raw_width, raw_height));
 }
 
-void VideoDecoder::setup(Size target_size)
+void VideoDecoder::setup(const Size& target_size)
 {
-	targetSize = target_size;
-	// picture data
-	picture = (AVPicture*)av_malloc(sizeof(AVPicture));
+	const int width = (int)target_size.width;
+	const int height = (int)target_size.height;
+	if (width <= 0 || height <= 0)
+	{
+		// error
+		return;
+	}
+	targetSize = Size(width, height);
 	// TODO: sws to YUV420 and convert in shader
-	auto fmt = AVPixelFormat::AV_PIX_FMT_RGB24;
-	avpicture_alloc(picture, fmt, targetSize.width, targetSize.height);
+	const auto fmt = AVPixelFormat::AV_PIX_FMT_RGB24;
+	//
+	auto ret = av_image_alloc(sw_pointers, sw_linesizes,
+		width,
+		height,
+		fmt,
+		1);
+	if (ret < 0)
+	{
+		// error
+	}
+
 	// scale/convert
 	img_convert_ctx = sws_getContext(
 		pCodecCtx->width,
 		pCodecCtx->height,
 		pCodecCtx->pix_fmt,
-		targetSize.width,
-		targetSize.height,
+		width,
+		height,
 		fmt,
 		1,//SWS_FAST_BILINEAR
 		nullptr, nullptr, nullptr);
@@ -247,11 +287,9 @@ void VideoDecoder::close()
 		sws_freeContext(img_convert_ctx);
 		img_convert_ctx = nullptr;
 
-		// Free RGB picture
-		if (picture)
+		if (sw_pointers[0])
 		{
-			avpicture_free(picture);
-			av_freep(&picture);
+			av_freep(&sw_pointers[0]);
 		}
 
 		if(pFrame)
@@ -260,9 +298,8 @@ void VideoDecoder::close()
 		if(packet)
 			av_freep(&packet);
 
-		// Close the codec
 		if (pCodecCtx)
-			avcodec_close(pCodecCtx);
+			avcodec_free_context(&pCodecCtx);
 
 		if (pFormatCtx)
 			avformat_close_input(&pFormatCtx);
@@ -285,7 +322,7 @@ uint32_t VideoDecoder::read(uint8_t** vbuf)
 		return 0;
 	if (lastFrame == currentFrame)
 	{
-		*vbuf = picture->data[idxVideo];
+		*vbuf = pFrame->data[idxVideo];
 		//VINFO("return last");
 		return 0;
 	}
@@ -294,36 +331,48 @@ uint32_t VideoDecoder::read(uint8_t** vbuf)
 		// Is this a packet from the video stream?
 		if (packet->stream_index == idxVideo) {
 			// Decode video frame
-			auto ret = avcodec_decode_video2(pCodecCtx, pFrame, &frameFinished, packet);
-			if (ret < 0) {
-				char str[64] = { 0 };
-				av_strerror(ret, str, 64);
-				VERRO("decode error: %s", str);
-				av_free_packet(packet);
-				//break;
-				return 0;
+			int ret = avcodec_send_packet(pCodecCtx, packet);
+			av_packet_unref(packet);
+			if (ret != 0) {
+				// error
+				continue;
 			}
+			while (ret >= 0)
+			{
+				ret = avcodec_receive_frame(pCodecCtx, pFrame);
+				if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+					break;
+				if (ret < 0) {
+					// error
+					break;
+				}
+			}
+			//if (ret != 0) {
+			//	char str[64] = { 0 };
+			//	av_strerror(ret, str, 64);
+			//	VERRO("decode error: %s", str);
+			//	//break;
+			//	return 0;
+			//}
 		}
-		// Free the packet that was allocated by av_read_frame
-		av_free_packet(packet);
 	}
 	// get frames remained in codec
 	if (!frameFinished)
 	{
-		auto ret = avcodec_decode_video2(pCodecCtx, pFrame, &frameFinished, packet);
+		auto ret = avcodec_send_packet(pCodecCtx, packet);
+		av_packet_unref(packet);
 		if (ret < 0 || !frameFinished)
 		{
-			return 0;
+			//return 0;
 		}
-		av_free_packet(packet);
 	}
 	sws_scale(img_convert_ctx,
 		pFrame->data, pFrame->linesize,
 		0, pCodecCtx->height,
-		picture->data, picture->linesize);
+		sw_pointers, sw_linesizes);
 	lastFrame = currentFrame;
 	currentFrame++;
-	*vbuf = picture->data[idxVideo];
+	*vbuf = sw_pointers[0];
 	return 1;
 }
 
@@ -413,7 +462,7 @@ void VideoDecoder::setVideoInfo(bool print)
 	if (!_isOpened)
 		return;
 	// AVFormatContext
-	videoInfo.filename = pFormatCtx->filename;
+	videoInfo.filename = pFormatCtx->url;
 	videoInfo.duration = pFormatCtx->duration;
 	videoInfo.bitRate = pFormatCtx->bit_rate;
 	videoInfo.nb_streams = pFormatCtx->nb_streams;

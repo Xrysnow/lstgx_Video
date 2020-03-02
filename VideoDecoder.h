@@ -1,9 +1,8 @@
 ﻿#pragma once
-
-#include <cstdint>
 #include "cocos2d.h"
 #include "VideoHeader.h"
 #include "VideoStream.h"
+#include <cstdint>
 
 namespace video
 {
@@ -12,11 +11,11 @@ namespace video
 	public:
 		static VideoDecoder* create(const char* path);
 
-		bool open(const char* path);
+		bool open(const std::string& path);
 		bool open(VideoStream* stream, double loopA = 0, double loopB = -1);
 
 		void setup();
-		void setup(cocos2d::Size target_size);
+		void setup(const cocos2d::Size& target_size);
 
 		bool isOpened() const;
 		void close();
@@ -59,17 +58,19 @@ namespace video
 		int idxAudio = -1;
 
 		SwsContext *img_convert_ctx = nullptr;
+		uint8_t* sw_pointers[4] = { nullptr };
+		int sw_linesizes[4] = { 0 };
 
-		AVPicture *picture = nullptr;
 		AVFrame   *pFrame = nullptr;
 		AVPacket  *packet = nullptr;
 		int64_t lastFrame = -2;
 		int64_t currentFrame = -1;
-
+		
 		std::string filePath;
 		double frame_dt = 0.0;
 		int64_t totalFrames = 0;
-		double durationV = 0;
+		double durationV = 0.0;
+		double durationCtx = 0.0;
 
 		VideoInfo videoInfo;
 		std::string readableInfo;
