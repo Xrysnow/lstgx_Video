@@ -16,6 +16,8 @@ extern "C" {
 #include "../../external/ffmpeg/include/libavutil/file.h"
 #include "../../external/ffmpeg/include/libavutil/common.h"
 #include "../../external/ffmpeg/include/libavutil/rational.h"
+#include "../../external/ffmpeg/include/libavutil/avutil.h"
+#include "../../external/ffmpeg/include/libavutil/imgutils.h"
 #include "../../external/ffmpeg/include/libswresample/swresample.h"
 }
 
