@@ -37,7 +37,7 @@ namespace video
 		// auto invoke [removeFromParentAndCleanup] when finished
 		void setAutoRemove(bool b) { autoRemove = b; }
 		// set callback when finished
-		void setVideoEndCallback(std::function<void()> func);
+		void setVideoEndCallback(const std::function<void()>& func);
 		// save current frame to file
 		void saveCurrentFrame(const std::string& path);
 

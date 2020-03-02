@@ -1,10 +1,9 @@
 ﻿#include "SpriteVideo.h"
-#include "AppFrame.h"
 #include "VideoHeader.h"
 
-#define INFO(_str, ...) LINFO("[VID] %s: " _str, __func__, ##__VA_ARGS__)
-#define WARN(_str,...) LWARNING("[VID] %s: " _str, __func__, ##__VA_ARGS__)
-#define ERRO(_str, ...) LERROR("[VID] %s: " _str, __func__, ##__VA_ARGS__)
+//#define INFO(_str, ...) LINFO("[VID] %s: " _str, __func__, ##__VA_ARGS__)
+//#define WARN(_str,...) LWARNING("[VID] %s: " _str, __func__, ##__VA_ARGS__)
+//#define ERRO(_str, ...) LERROR("[VID] %s: " _str, __func__, ##__VA_ARGS__)
 
 using namespace cocos2d;
 using namespace video;
@@ -12,7 +11,8 @@ using namespace video;
 SpriteVideo* SpriteVideo::create(const char* path, int width, int height)
 {
 	SpriteVideo* ret = new (std::nothrow) SpriteVideo();
-	if (ret&&ret->init(path, width, height)) {
+	if (ret&&ret->init(path, width, height))
+	{
 		ret->autorelease();
 		return ret;
 	}
@@ -26,7 +26,8 @@ SpriteVideo::SpriteVideo()
 
 SpriteVideo::~SpriteVideo()
 {
-	if (decoder) {
+	if (decoder)
+	{
 		decoder->close();
 		decoder->release();
 	}
@@ -34,7 +35,7 @@ SpriteVideo::~SpriteVideo()
 
 bool SpriteVideo::init(const char* path, int width_, int height_)
 {
-	decoder = xVideo::VideoDecoder::create(path);
+	decoder = VideoDecoder::create(path);
 	if (!decoder)
 		return false;
 	decoder->retain();
@@ -42,14 +43,15 @@ bool SpriteVideo::init(const char* path, int width_, int height_)
 		decoder->setup(Size(width_, height_));
 	else
 		decoder->setup();
-	auto size = decoder->getTargetSize();
-	auto length = size.width*size.height;
+	const auto size = decoder->getTargetSize();
+	const auto length = size.width*size.height;
 	auto texture = new Texture2D();
 	if (!texture)
 		return false;
 	auto buf = (uint8_t*)malloc(length * 3);
+	const auto pixFormat = backend::PixelFormat::RGB888;
 	if (!texture->initWithData(buf, length,
-		Texture2D::PixelFormat::RGB888, size.width, size.height, size))
+		pixFormat, size.width, size.height, size))
 	{
 		free(buf);
 		return false;
@@ -76,7 +78,7 @@ void SpriteVideo::vplay()
 		isPlaying = true;
 	}
 	autoUpdate = true;
-	INFO("start play");
+	//INFO("start play");
 }
 
 void SpriteVideo::vstop()
@@ -183,23 +185,21 @@ void SpriteVideo::draw(Renderer *renderer, const Mat4 &transform, uint32_t flags
 		{
 			update(-1);
 		}
-		// TODO: use PBO
-		if (texureDirty&&vbuf)
+		if (texureDirty && vbuf)
 		{
-			cmdBeforeDraw.func = [this]()
-			{
-				GL::bindTexture2D(_texture->getName());
-				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, _contentSize.width, _contentSize.height,
-					GL_RGB, GL_UNSIGNED_BYTE, vbuf);
-			};
-			renderer->addCommand(&cmdBeforeDraw);		
-		}		
+			//cmdBeforeDraw.func = [this]()
+			//{
+			//	_texture->updateWithData(vbuf, 0, 0, _texture->getPixelsWide(), _texture->getPixelsHigh());
+			//};
+			//renderer->addCommand(&cmdBeforeDraw);		
+			_texture->updateWithData(vbuf, 0, 0, _texture->getPixelsWide(), _texture->getPixelsHigh());
+		}
 	}
 
 	Sprite::draw(renderer, transform, flags);
 }
 
-void SpriteVideo::setVideoEndCallback(std::function<void()> func)
+void SpriteVideo::setVideoEndCallback(const std::function<void()>& func)
 {
 	videoEndCallback = func;
 }
@@ -210,8 +210,8 @@ void SpriteVideo::saveCurrentFrame(const std::string& path)
 		return;
 	auto im = new Image();
 	auto dat = vbuf;
-	auto length = _contentSize.width * _contentSize.height;
-	auto buf = (uint8_t*)malloc(length * 4);
+	const int length = _contentSize.width * _contentSize.height;
+	auto buf = new uint8_t[length * 4];
 	for (int i = 0; i < length; ++i)
 	{
 		buf[i * 4] = dat[i * 3];
@@ -223,5 +223,5 @@ void SpriteVideo::saveCurrentFrame(const std::string& path)
 		_contentSize.width, _contentSize.height, 32);
 	im->saveToFile(path);
 	delete im;
-	free(buf);
+	delete[] buf;
 }
