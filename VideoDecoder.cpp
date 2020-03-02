@@ -5,7 +5,7 @@
 
 using namespace std;
 using namespace cocos2d;
-using namespace xVideo;
+using namespace video;
 
 static void lazyInit()
 {

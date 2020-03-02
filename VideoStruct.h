@@ -1,6 +1,6 @@
 #pragma once
 
-namespace xVideo
+namespace video
 {
 	struct VideoInfo
 	{

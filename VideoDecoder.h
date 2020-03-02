@@ -5,7 +5,7 @@
 #include "VideoHeader.h"
 #include "VideoStream.h"
 
-namespace xVideo
+namespace video
 {
 	class VideoDecoder : public cocos2d::Ref
 	{

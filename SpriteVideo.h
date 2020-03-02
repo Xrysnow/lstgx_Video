@@ -4,7 +4,7 @@
 #include "VideoHeader.h"
 #include "VideoDecoder.h"
 
-namespace xVideo
+namespace video
 {
 	//TODO: cache textures
 	class SpriteVideo : public cocos2d::Sprite

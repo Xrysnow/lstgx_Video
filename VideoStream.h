@@ -2,7 +2,7 @@
 #include "base/CCRef.h"
 #include <mutex>
 
-namespace xVideo
+namespace video
 {
 	class VideoStream : public cocos2d::Ref
 	{

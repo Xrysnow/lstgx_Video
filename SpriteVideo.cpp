@@ -7,7 +7,7 @@
 #define ERRO(_str, ...) LERROR("[VID] %s: " _str, __func__, ##__VA_ARGS__)
 
 using namespace cocos2d;
-using namespace xVideo;
+using namespace video;
 
 SpriteVideo* SpriteVideo::create(const char* path, int width, int height)
 {
