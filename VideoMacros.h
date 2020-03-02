@@ -14,7 +14,7 @@
 #pragma comment(lib,"avfilter.lib")
 #pragma comment(lib,"avformat.lib")
 #pragma comment(lib,"avutil.lib")
-#pragma comment(lib,"postproc.lib")
+//#pragma comment(lib,"postproc.lib")
 #pragma comment(lib,"swresample.lib")
 #pragma comment(lib,"swscale.lib")
 #pragma warning( disable : 4996 )
@@ -24,5 +24,5 @@
 #endif
 
 #ifdef PixelFormat
-#undef   PixelFormat
+#undef PixelFormat
 #endif
