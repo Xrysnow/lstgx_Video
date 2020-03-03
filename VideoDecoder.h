@@ -1,21 +1,21 @@
 ﻿#pragma once
 #include "cocos2d.h"
-#include "VideoHeader.h"
+#include "VideoCommon.h"
 #include "VideoStream.h"
 #include <cstdint>
 
 namespace video
 {
-	class VideoDecoder : public cocos2d::Ref
+	class Decoder : public cocos2d::Ref
 	{
 	public:
-		static VideoDecoder* create(const char* path);
+		static Decoder* create(const std::string& path);
 
 		bool open(const std::string& path);
 		bool open(VideoStream* stream, double loopA = 0, double loopB = -1);
 
-		void setup();
-		void setup(const cocos2d::Size& target_size);
+		bool setup();
+		bool setup(const cocos2d::Size& target_size);
 
 		bool isOpened() const;
 		void close();
@@ -37,10 +37,17 @@ namespace video
 		const VideoInfo& getVideoInfo() const { return videoInfo; }
 		const std::string& getReadableInfo() const { return readableInfo; }
 	protected:
+		bool send_packet(AVPacket* packet);
+		bool receive_frame(AVFrame* frame);
+
+		AVPixelFormat getHWPixelFormat(AVHWDeviceType type);
+		bool createHWDevice(AVHWDeviceType type);
+		bool usingHardware();
+		
 		void setVideoInfo(bool print);
 
-		VideoDecoder();
-		~VideoDecoder();
+		Decoder();
+		~Decoder();
 		bool _isOpened = false;
 		VideoStream* stream = nullptr;
 
@@ -51,18 +58,23 @@ namespace video
 		AVRational timeBaseV;
 		AVRational timeBaseA;
 
-		AVFormatContext *pFormatCtx = nullptr;
-		AVCodecContext  *pCodecCtx = nullptr;
-		AVCodec			*pCodecV = nullptr;
+		AVFormatContext* pFormatCtx = nullptr;
+		AVCodecContext*  pCodecCtx = nullptr;
+		AVCodec*         pCodecV = nullptr;
 		int idxVideo = -1;
 		int idxAudio = -1;
 
-		SwsContext *img_convert_ctx = nullptr;
-		uint8_t* sw_pointers[4] = { nullptr };
-		int sw_linesizes[4] = { 0 };
+		AVHWDeviceType hw_device_type;
+		AVPixelFormat hw_pix_fmt = AV_PIX_FMT_NONE;
+		AVPixelFormat sw_pix_fmt = AV_PIX_FMT_NONE;
+		AVBufferRef* hw_device_ctx = nullptr;
 
-		AVFrame   *pFrame = nullptr;
-		AVPacket  *packet = nullptr;
+		SwsContext* img_convert_ctx = nullptr;
+		uint8_t* sws_pointers[4] = { nullptr };
+		int sws_linesizes[4] = { 0 };
+
+		AVFrame* pFrame = nullptr;
+		AVFrame* pFrameSW = nullptr;
 		int64_t lastFrame = -2;
 		int64_t currentFrame = -1;
 		

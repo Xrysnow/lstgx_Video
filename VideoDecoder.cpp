@@ -1,11 +1,36 @@
 ﻿#include "VideoDecoder.h"
 #include "cocos2d.h"
-#include "VideoMacros.h"
-#include "VideoHeader.h"
 
 using namespace std;
 using namespace cocos2d;
 using namespace video;
+
+namespace
+{
+	AVPixelFormat HW_PIX_FMT = AV_PIX_FMT_NONE;
+	enum AVPixelFormat get_hw_format(AVCodecContext*,
+		const enum AVPixelFormat* pix_fmts)
+	{
+		const enum AVPixelFormat *p;
+		for (p = pix_fmts; *p != -1; p++) {
+			if (*p == HW_PIX_FMT)
+				return *p;
+		}
+		VERRO("failed to get HW surface format");
+		return AV_PIX_FMT_NONE;
+	}
+
+	std::unique_ptr<AVPacket, std::function<void(AVPacket*)>> newPacket()
+	{
+		return std::unique_ptr<AVPacket, std::function<void(AVPacket*)>>{
+			new AVPacket, [](AVPacket* p) { av_packet_unref(p); delete p; } };
+	}
+	std::unique_ptr<AVFrame, std::function<void(AVFrame*)>> newFrame()
+	{
+		return std::unique_ptr<AVFrame, std::function<void(AVFrame*)>>{
+			av_frame_alloc(), [](AVFrame* p) { av_frame_free(&p); } };
+	}
+}
 
 static void lazyInit()
 {
@@ -79,25 +104,26 @@ static void lazyInit()
 		std::string bsf = "bsf:";
 		auto bsf_ = av_bsf_iterate(&opaque);
 		while (bsf_ != nullptr) {
+			bsf += " ";
 			bsf += bsf_->name;
 			bsf_ = av_bsf_iterate(&opaque);
 		}
 
-		VINFO("%s", protocol_in.c_str());
-		VINFO("%s", protocol_out.c_str());
-		VINFO("%s", demuxer.c_str());
-		VINFO("%s", muxer.c_str());
-		VINFO("%s", encoder.c_str());
-		VINFO("%s", encoder_hw.c_str());
-		VINFO("%s", decoder.c_str());
-		VINFO("%s", decoder_hw.c_str());
-		VINFO("%s", bsf.c_str());
+		//VINFO("%s", protocol_in.c_str());
+		//VINFO("%s", protocol_out.c_str());
+		//VINFO("%s", demuxer.c_str());
+		//VINFO("%s", muxer.c_str());
+		//VINFO("%s", encoder.c_str());
+		//VINFO("%s", encoder_hw.c_str());
+		//VINFO("%s", decoder.c_str());
+		//VINFO("%s", decoder_hw.c_str());
+		//VINFO("%s", bsf.c_str());
 	}
 }
 
-VideoDecoder* VideoDecoder::create(const char* path)
+Decoder* Decoder::create(const std::string& path)
 {
-	auto ret = new (std::nothrow) VideoDecoder;
+	auto ret = new (std::nothrow) Decoder;
 	if (ret&&ret->open(path))
 	{
 		ret->autorelease();
@@ -107,7 +133,7 @@ VideoDecoder* VideoDecoder::create(const char* path)
 	return nullptr;
 }
 
-bool VideoDecoder::open(const std::string& path)
+bool Decoder::open(const std::string& path)
 {
 	if (_isOpened)
 		return false;
@@ -172,11 +198,29 @@ bool VideoDecoder::open(const std::string& path)
 	pCodecV = avcodec_find_decoder(pCodecCtx->codec_id);
 	if (pCodecCtx->codec_id == AV_CODEC_ID_H264)
 	{
-		auto codec_hw = avcodec_find_decoder_by_name("h264_qsv");
-		if(!codec_hw)
-			codec_hw = avcodec_find_decoder_by_name("h264_cuvid");
+		AVCodec* codec_hw = nullptr;
+		do
+		{
+			if (createHWDevice(AV_HWDEVICE_TYPE_QSV))
+			{
+				codec_hw = avcodec_find_decoder_by_name("h264_qsv");
+				if(codec_hw)
+					break;
+			}
+			if (createHWDevice(AV_HWDEVICE_TYPE_CUDA))
+			{
+				codec_hw = avcodec_find_decoder_by_name("h264_cuvid");
+				if(codec_hw)
+					break;
+			}
+		} while (false);
 		if (codec_hw)
+		{
+			VINFO("hardware device: %s", av_hwdevice_get_type_name(hw_device_type));
 			pCodecV = codec_hw;
+			HW_PIX_FMT = hw_pix_fmt;
+			pCodecCtx->get_format = get_hw_format;
+		}
 	}
 	if (!pCodecV) {
 		VERRO("can't get video decoder");
@@ -209,8 +253,12 @@ bool VideoDecoder::open(const std::string& path)
 	
 	// Allocate video frame
 	pFrame = av_frame_alloc();
-
-	packet = (AVPacket*)av_malloc(sizeof(AVPacket));
+	pFrameSW = av_frame_alloc();
+	if (!pFrame || !pFrameSW)
+	{
+		VERRO("can't alloc frame");
+		return false;
+	}
 
 	// File Information
 	//av_dump_format(pFormatCtx, 0, m_filePath.c_str(), 0);
@@ -221,162 +269,170 @@ bool VideoDecoder::open(const std::string& path)
 	timeBaseV = pFormatCtx->streams[idxVideo]->time_base;
 	//timeBaseA = pFormatCtx->streams[idxAudio]->time_base;
 	durationV = pFormatCtx->streams[idxVideo]->duration * av_q2d(timeBaseV);
-	//avcodec_find_encoder_by_name("");
 	_isOpened = true;
 	setVideoInfo(true);
 	return true;
 }
 
-bool VideoDecoder::open(VideoStream* src, double loopA, double loopB)
+bool Decoder::open(VideoStream* stream, double loopA, double loopB)
 {
-	if (_isOpened || !src)
+	if (_isOpened || !stream)
 		return false;
 	//TODO:
 	return true;
 }
 
-void VideoDecoder::setup()
+bool Decoder::setup()
 {
-	setup(Size(raw_width, raw_height));
+	return setup(Size(raw_width, raw_height));
 }
 
-void VideoDecoder::setup(const Size& target_size)
+bool Decoder::setup(const Size& target_size)
 {
 	const int width = (int)target_size.width;
 	const int height = (int)target_size.height;
 	if (width <= 0 || height <= 0)
 	{
-		// error
-		return;
+		return false;
 	}
 	targetSize = Size(width, height);
 	// TODO: sws to YUV420 and convert in shader
 	const auto fmt = AVPixelFormat::AV_PIX_FMT_RGB24;
-	//
-	auto ret = av_image_alloc(sw_pointers, sw_linesizes,
-		width,
-		height,
-		fmt,
-		1);
+	auto ret = av_image_alloc(sws_pointers, sws_linesizes,
+		width, height, fmt, 1);
 	if (ret < 0)
 	{
-		// error
+		VERRO("can't alloc image");
+		return false;
 	}
-
+	auto srcFormat = pCodecCtx->pix_fmt;
+	if (usingHardware() && srcFormat == hw_pix_fmt)
+		srcFormat = sw_pix_fmt;
+	assert(srcFormat >= 0);
 	// scale/convert
 	img_convert_ctx = sws_getContext(
 		pCodecCtx->width,
 		pCodecCtx->height,
-		pCodecCtx->pix_fmt,
+		srcFormat,
 		width,
 		height,
 		fmt,
-		1,//SWS_FAST_BILINEAR
+		SWS_FAST_BILINEAR,
 		nullptr, nullptr, nullptr);
+	if (!img_convert_ctx)
+	{
+		VERRO("can't create sws context");
+		return false;
+	}
+	return true;
 }
 
-bool VideoDecoder::isOpened() const
+bool Decoder::isOpened() const
 {
 	return _isOpened;
 }
 
-void VideoDecoder::close()
+void Decoder::close()
 {
-	if (_isOpened)
+	if(img_convert_ctx)
 	{
 		sws_freeContext(img_convert_ctx);
 		img_convert_ctx = nullptr;
-
-		if (sw_pointers[0])
-		{
-			av_freep(&sw_pointers[0]);
-		}
-
-		if(pFrame)
-			av_freep(&pFrame);
-
-		if(packet)
-			av_freep(&packet);
-
-		if (pCodecCtx)
-			avcodec_free_context(&pCodecCtx);
-
-		if (pFormatCtx)
-			avformat_close_input(&pFormatCtx);
-
-		if (stream)
-		{
-			VINFO("stream ref = %d", stream->getReferenceCount());
-			stream->seek(VideoStream::SeekOrigin::BEGINNING, 0);
-			stream->release();
-			stream = nullptr;
-		}
-		_isOpened = false;
 	}
+	if (sws_pointers[0])
+	{
+		av_freep(&sws_pointers[0]);
+	}
+	if(pFrame)
+	{
+		av_frame_free(&pFrame);
+		pFrame = nullptr;
+	}
+	if(pFrameSW)
+	{
+		av_frame_free(&pFrameSW);
+		pFrameSW = nullptr;
+	}
+	if (pCodecCtx)
+	{
+		avcodec_free_context(&pCodecCtx);
+		pCodecCtx = nullptr;
+	}
+	if (pFormatCtx)
+	{
+		avformat_close_input(&pFormatCtx);
+		pFormatCtx = nullptr;
+	}
+	if (hw_device_ctx)
+	{
+		av_buffer_unref(&hw_device_ctx);
+		hw_device_ctx = nullptr;
+	}
+	if (stream)
+	{
+		VINFO("stream ref = %d", stream->getReferenceCount());
+		stream->seek(VideoStream::SeekOrigin::BEGINNING, 0);
+		stream->release();
+		stream = nullptr;
+	}
+	_isOpened = false;
 }
 
-uint32_t VideoDecoder::read(uint8_t** vbuf)
+uint32_t Decoder::read(uint8_t** vbuf)
 {
 	*vbuf = nullptr;
 	if (currentFrame == (totalFrames - 1) || !_isOpened)
 		return 0;
 	if (lastFrame == currentFrame)
 	{
-		*vbuf = pFrame->data[idxVideo];
-		//VINFO("return last");
+		*vbuf = usingHardware() ? pFrameSW->data[idxVideo] : pFrame->data[idxVideo];
 		return 0;
 	}
+	int result = 0;
 	int frameFinished = 0;
+	auto packet_ = newPacket();
+	auto packet = packet_.get();
+	av_init_packet(packet);
+	packet->data = nullptr;
 	while (!frameFinished && av_read_frame(pFormatCtx, packet) >= 0) {
-		// Is this a packet from the video stream?
 		if (packet->stream_index == idxVideo) {
-			// Decode video frame
-			int ret = avcodec_send_packet(pCodecCtx, packet);
-			av_packet_unref(packet);
-			if (ret != 0) {
-				// error
-				continue;
-			}
-			while (ret >= 0)
+			bool sent = false;
+			while (!sent)
 			{
-				ret = avcodec_receive_frame(pCodecCtx, pFrame);
-				if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-					break;
-				if (ret < 0) {
-					// error
+				sent = send_packet(packet);
+				if (receive_frame(pFrame))
+				{
+					result = 1;
+					frameFinished = 1;
 					break;
 				}
 			}
-			//if (ret != 0) {
-			//	char str[64] = { 0 };
-			//	av_strerror(ret, str, 64);
-			//	VERRO("decode error: %s", str);
-			//	//break;
-			//	return 0;
-			//}
 		}
 	}
-	// get frames remained in codec
-	if (!frameFinished)
+	if (result == 0)
+		return 0;
+	auto frame = pFrame;
+	if (usingHardware() && pFrame->format == hw_pix_fmt)
 	{
-		auto ret = avcodec_send_packet(pCodecCtx, packet);
-		av_packet_unref(packet);
-		if (ret < 0 || !frameFinished)
+		auto ret = av_hwframe_transfer_data(pFrameSW, pFrame, 0);
+		if (ret < 0)
 		{
-			//return 0;
+			VERRO("failed to transfer hw data: %s", getErrorString(ret).c_str());
+			return 0;
 		}
+		frame = pFrameSW;
 	}
 	sws_scale(img_convert_ctx,
-		pFrame->data, pFrame->linesize,
+		frame->data, frame->linesize,
 		0, pCodecCtx->height,
-		sw_pointers, sw_linesizes);
+		sws_pointers, sws_linesizes);
 	lastFrame = currentFrame;
 	currentFrame++;
-	*vbuf = sw_pointers[0];
-	return 1;
+	*vbuf = sws_pointers[0];
+	return result;
 }
 
-bool VideoDecoder::seek(uint32_t frameOffset)
+bool Decoder::seek(uint32_t frameOffset)
 {
 	if (!_isOpened || frameOffset >= totalFrames)
 		return false;
@@ -398,7 +454,7 @@ bool VideoDecoder::seek(uint32_t frameOffset)
 	return ret >= 0;
 }
 
-bool VideoDecoder::seekTime(double sec)
+bool Decoder::seekTime(double sec)
 {
 	auto target = sec / durationV * totalFrames;
 	int64_t targetFrame = (int64_t)target;
@@ -447,22 +503,107 @@ bool VideoDecoder::seekTime(double sec)
 	return true;
 }
 
-uint32_t VideoDecoder::tell() const
+uint32_t Decoder::tell() const
 {
 	return currentFrame;
 }
 
-uint32_t VideoDecoder::getTotalFrames() const
+uint32_t Decoder::getTotalFrames() const
 {
 	return totalFrames;
 }
 
-void VideoDecoder::setVideoInfo(bool print)
+bool Decoder::send_packet(AVPacket* packet)
+{
+	const auto ret = avcodec_send_packet(pCodecCtx, packet);
+	if (ret < 0) {
+		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+		{
+			return false;
+		}
+		else
+		{
+			// error
+		}
+	}
+	return true;
+}
+
+bool Decoder::receive_frame(AVFrame* frame)
+{
+	const auto ret = avcodec_receive_frame(pCodecCtx, frame);
+	if (ret < 0) {
+		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+		{
+			return false;
+		}
+		else
+		{
+			// error
+		}
+	}
+	return true;
+}
+
+AVPixelFormat Decoder::getHWPixelFormat(AVHWDeviceType type)
+{
+	for (auto i = 0;;i++) {
+		auto config = avcodec_get_hw_config(pCodecV, i);
+		if (!config) {
+			// not supported
+			return AV_PIX_FMT_NONE;
+		}
+		if (config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX &&
+			config->device_type == type) {
+			return config->pix_fmt;
+		}
+	}
+}
+
+bool Decoder::createHWDevice(AVHWDeviceType type)
+{
+	if (hw_device_ctx)
+	{
+		av_buffer_unref(&hw_device_ctx);
+		hw_device_ctx = nullptr;
+	}
+	auto ret = av_hwdevice_ctx_create(
+		&hw_device_ctx, type, nullptr, nullptr, 0);
+	if (ret < 0 || !hw_device_ctx)
+		return false;
+	pCodecCtx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
+	hw_device_type = type;
+	hw_pix_fmt = getHWPixelFormat(type);
+	auto hw_frames_const = av_hwdevice_get_hwframe_constraints(hw_device_ctx, nullptr);
+	if (!hw_frames_const || !hw_frames_const->valid_sw_formats)
+	{
+		return false;
+	}
+	for (auto p = hw_frames_const->valid_sw_formats; *p != AV_PIX_FMT_NONE; p++)
+	{
+		// check if we can convert to the desired format
+		if (sws_isSupportedInput(*p))
+		{
+			// this format can be used with swscale
+			sw_pix_fmt = *p;
+			break;
+		}
+	}
+	return true;
+}
+
+bool Decoder::usingHardware()
+{
+	return hw_device_type != AV_HWDEVICE_TYPE_NONE;
+}
+
+void Decoder::setVideoInfo(bool print)
 {
 	if (!_isOpened)
 		return;
 	// AVFormatContext
-	videoInfo.filename = pFormatCtx->url;
+	if(pFormatCtx->url)
+		videoInfo.filename = pFormatCtx->url;
 	videoInfo.duration = pFormatCtx->duration;
 	videoInfo.bitRate = pFormatCtx->bit_rate;
 	videoInfo.nb_streams = pFormatCtx->nb_streams;
@@ -471,9 +612,12 @@ void VideoDecoder::setVideoInfo(bool print)
 	auto iformat = pFormatCtx->iformat;
 	if (iformat)
 	{
-		videoInfo.iformatName = iformat->name;
-		videoInfo.iformatLongName = iformat->long_name;
-		videoInfo.iformatExtensions = iformat->extensions;
+		if(iformat->name)
+			videoInfo.iformatName = iformat->name;
+		if(iformat->long_name)
+			videoInfo.iformatLongName = iformat->long_name;
+		if(iformat->extensions)
+			videoInfo.iformatExtensions = iformat->extensions;
 		videoInfo.iformatID = iformat->raw_codec_id;		
 	}
 
@@ -518,9 +662,10 @@ void VideoDecoder::setVideoInfo(bool print)
 	}
 
 	// AVCodec
-	videoInfo.codecNameV = pCodecV->name;
-	videoInfo.codecLongNameV = pCodecV->long_name;
-
+	if(pCodecV->name)
+		videoInfo.codecNameV = pCodecV->name;
+	if(pCodecV->long_name)
+		videoInfo.codecLongNameV = pCodecV->long_name;
 
 	string inf;
 	inf += StringUtils::format("filename = %s\n", videoInfo.filename.c_str());
@@ -551,11 +696,11 @@ void VideoDecoder::setVideoInfo(bool print)
 	}
 }
 
-VideoDecoder::VideoDecoder()
+Decoder::Decoder()
 {
 }
 
-VideoDecoder::~VideoDecoder()
+Decoder::~Decoder()
 {
 	close();
 }

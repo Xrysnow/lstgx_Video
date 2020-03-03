@@ -1,17 +1,11 @@
-﻿#include "SpriteVideo.h"
-#include "VideoHeader.h"
+﻿#include "VideoPlayer.h"
 
-//#define INFO(_str, ...) LINFO("[VID] %s: " _str, __func__, ##__VA_ARGS__)
-//#define WARN(_str,...) LWARNING("[VID] %s: " _str, __func__, ##__VA_ARGS__)
-//#define ERRO(_str, ...) LERROR("[VID] %s: " _str, __func__, ##__VA_ARGS__)
-
-using namespace cocos2d;
 using namespace video;
 
-SpriteVideo* SpriteVideo::create(const char* path, int width, int height)
+Player* Player::create(const std::string& path, int width, int height)
 {
-	SpriteVideo* ret = new (std::nothrow) SpriteVideo();
-	if (ret&&ret->init(path, width, height))
+	auto ret = new (std::nothrow) Player();
+	if (ret&&ret->init_(path, width, height))
 	{
 		ret->autorelease();
 		return ret;
@@ -20,11 +14,11 @@ SpriteVideo* SpriteVideo::create(const char* path, int width, int height)
 	return nullptr;
 }
 
-SpriteVideo::SpriteVideo()
+Player::Player()
 {
 }
 
-SpriteVideo::~SpriteVideo()
+Player::~Player()
 {
 	if (decoder)
 	{
@@ -33,30 +27,33 @@ SpriteVideo::~SpriteVideo()
 	}
 }
 
-bool SpriteVideo::init(const char* path, int width_, int height_)
+bool Player::init_(const std::string& path, int width, int height)
 {
-	decoder = VideoDecoder::create(path);
+	decoder = Decoder::create(path);
 	if (!decoder)
 		return false;
 	decoder->retain();
-	if (width_ > 0 && height_ > 0)
-		decoder->setup(Size(width_, height_));
-	else
-		decoder->setup();
+	if (width > 0 && height > 0)
+	{
+		if(!decoder->setup(cocos2d::Size(width, height)))
+			return false;
+	}
+	else if (!decoder->setup())
+		return false;
 	const auto size = decoder->getTargetSize();
-	const auto length = size.width*size.height;
-	auto texture = new Texture2D();
+	const int length = size.width * size.height;
+	auto texture = new cocos2d::Texture2D();
 	if (!texture)
 		return false;
-	auto buf = (uint8_t*)malloc(length * 3);
-	const auto pixFormat = backend::PixelFormat::RGB888;
+	auto buf = new uint8_t[length * 3];
+	const auto pixFormat = cocos2d::backend::PixelFormat::RGB888;
 	if (!texture->initWithData(buf, length,
 		pixFormat, size.width, size.height, size))
 	{
-		free(buf);
+		delete[] buf;
 		return false;
 	}
-	free(buf);
+	delete[] buf;
 	initWithTexture(texture);
 	setContentSize(size);
 	_running = true;
@@ -66,7 +63,7 @@ bool SpriteVideo::init(const char* path, int width_, int height_)
 	return true;
 }
 
-void SpriteVideo::vplay()
+void Player::vplay()
 {
 	if (mode == MANUAL)
 		return;
@@ -81,7 +78,7 @@ void SpriteVideo::vplay()
 	//INFO("start play");
 }
 
-void SpriteVideo::vstop()
+void Player::vstop()
 {
 	if (mode == MANUAL)
 		return;
@@ -95,7 +92,7 @@ void SpriteVideo::vstop()
 	autoUpdate = false;
 }
 
-void SpriteVideo::vpause()
+void Player::vpause()
 {
 	if (mode == MANUAL)
 		return;
@@ -107,7 +104,7 @@ void SpriteVideo::vpause()
 	}
 }
 
-void SpriteVideo::vresume()
+void Player::vresume()
 {
 	if (mode == MANUAL)
 		return;
@@ -119,7 +116,7 @@ void SpriteVideo::vresume()
 	}
 }
 
-void SpriteVideo::seekTime(double sec)
+void Player::seekTime(double sec)
 {
 	if (decoder->seekTime(sec))
 	{
@@ -127,7 +124,7 @@ void SpriteVideo::seekTime(double sec)
 	}
 }
 
-void SpriteVideo::seek(uint32_t frame)
+void Player::seek(uint32_t frame)
 {
 	if (decoder->seek(frame))
 	{
@@ -135,9 +132,9 @@ void SpriteVideo::seek(uint32_t frame)
 	}
 }
 
-void SpriteVideo::update(float dt)
+void Player::update(float dt)
 {
-	Sprite::update(dt);
+	cocos2d::Sprite::update(dt);
 	if (dt >= 0)
 	{
 		seekTime(currentTime);
@@ -148,8 +145,10 @@ void SpriteVideo::update(float dt)
 		currentTime += 1.0 / videoInfo.frameRateV;
 	}
 	auto ret = decoder->read(&vbuf);
+	//if(!vbuf)
+	//	VINFO("read null from decoder");
 	texureDirty = ret != 0 && vbuf;
-	if (decoder->tell() == decoder->getTotalFrames() - 1 || !vbuf) {
+	if (decoder->tell() == decoder->getTotalFrames() - 1/* || !vbuf*/) {
 		vstop();
 		if (videoEndCallback) {
 			videoEndCallback();
@@ -162,7 +161,7 @@ void SpriteVideo::update(float dt)
 	}
 }
 
-void SpriteVideo::setPlayMode(PlayMode m)
+void Player::setPlayMode(PlayMode m)
 {
 	if (m != REALTIME)
 	{
@@ -171,7 +170,7 @@ void SpriteVideo::setPlayMode(PlayMode m)
 	mode = m;
 }
 
-void SpriteVideo::draw(Renderer *renderer, const Mat4 &transform, uint32_t flags)
+void Player::draw(cocos2d::Renderer* renderer, const cocos2d::Mat4 &transform, uint32_t flags)
 {
 	if (!_texture)
 		return;
@@ -196,19 +195,19 @@ void SpriteVideo::draw(Renderer *renderer, const Mat4 &transform, uint32_t flags
 		}
 	}
 
-	Sprite::draw(renderer, transform, flags);
+	cocos2d::Sprite::draw(renderer, transform, flags);
 }
 
-void SpriteVideo::setVideoEndCallback(const std::function<void()>& func)
+void Player::setVideoEndCallback(const std::function<void()>& func)
 {
 	videoEndCallback = func;
 }
 
-void SpriteVideo::saveCurrentFrame(const std::string& path)
+void Player::saveCurrentFrame(const std::string& path)
 {
 	if (!vbuf)
 		return;
-	auto im = new Image();
+	auto im = new cocos2d::Image();
 	auto dat = vbuf;
 	const int length = _contentSize.width * _contentSize.height;
 	auto buf = new uint8_t[length * 4];

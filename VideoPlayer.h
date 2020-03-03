@@ -1,13 +1,13 @@
 ﻿#pragma once
 #include "cocos2d.h"
-#include <functional>
-#include "VideoHeader.h"
+#include "VideoCommon.h"
 #include "VideoDecoder.h"
+#include <functional>
 
 namespace video
 {
-	//TODO: cache textures
-	class SpriteVideo : public cocos2d::Sprite
+	//TODO: cache
+	class Player : public cocos2d::Sprite
 	{
 	public:
 		enum PlayMode
@@ -17,16 +17,16 @@ namespace video
 			FRAME,	   // game frame -> video frame
 			MANUAL,	   // invoke update manually
 		};
-		static SpriteVideo* create(const char* path, int width = -1, int height = -1);
-
-		bool init(const char* path, int width_ = -1, int height_ = -1);
+		static Player* create(const std::string& path, int width = -1, int height = -1);
+	protected:
+		bool init_(const std::string& path, int width = -1, int height = -1);
+	public:
 		void vplay();
 		void vstop();
 		void vpause();
 		void vresume();
 		// can only seek key frame, not recommand to set a non-0 value
 		void seek(uint32_t frame);
-		void draw(cocos2d::Renderer *renderer, const cocos2d::Mat4& transform, uint32_t flags) override;
 		// step dt in decoder and get data, will step 1 frame if dt<0
 		void update(float dt) override;
 
@@ -41,9 +41,10 @@ namespace video
 		// save current frame to file
 		void saveCurrentFrame(const std::string& path);
 
-	private:
+	protected:
+		void draw(cocos2d::Renderer* renderer, const cocos2d::Mat4& transform, uint32_t flags) override;
 		void seekTime(double sec);
-		VideoDecoder* decoder = nullptr;
+		Decoder* decoder = nullptr;
 		VideoInfo videoInfo;
 		uint8_t* vbuf = nullptr;
 
@@ -56,9 +57,9 @@ namespace video
 		PlayMode mode = STEP;
 
 		std::function<void()> videoEndCallback;
-		cocos2d::CustomCommand cmdBeforeDraw;
+		cocos2d::CallbackCommand cmdBeforeDraw;
 
-		SpriteVideo();
-		virtual ~SpriteVideo();
+		Player();
+		virtual ~Player();
 	};
 }
