@@ -454,7 +454,7 @@ bool Decoder::seek(uint32_t frameOffset)
 	return ret >= 0;
 }
 
-bool Decoder::seekTime(double sec)
+bool Decoder::playerSeekTime(double sec)
 {
 	auto target = sec / durationV * totalFrames;
 	int64_t targetFrame = (int64_t)target;

@@ -116,9 +116,9 @@ void Player::vresume()
 	}
 }
 
-void Player::seekTime(double sec)
+void Player::playerSeekTime(double sec)
 {
-	if (decoder->seekTime(sec))
+	if (decoder->playerSeekTime(sec))
 	{
 		currentTime = sec;
 	}
@@ -137,7 +137,8 @@ void Player::update(float dt)
 	cocos2d::Sprite::update(dt);
 	if (dt >= 0)
 	{
-		seekTime(currentTime);
+		// note: it assumes that framerate of the video is lower than the game
+		playerSeekTime(currentTime);
 		currentTime += dt;
 	}
 	else

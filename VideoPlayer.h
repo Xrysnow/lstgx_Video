@@ -43,7 +43,7 @@ namespace video
 
 	protected:
 		void draw(cocos2d::Renderer* renderer, const cocos2d::Mat4& transform, uint32_t flags) override;
-		void seekTime(double sec);
+		void playerSeekTime(double sec);
 		Decoder* decoder = nullptr;
 		VideoInfo videoInfo;
 		uint8_t* vbuf = nullptr;

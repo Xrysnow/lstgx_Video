@@ -8,6 +8,7 @@ namespace video
 {
 	class Decoder : public cocos2d::Ref
 	{
+		friend class Player;
 	public:
 		static Decoder* create(const std::string& path);
 
@@ -25,8 +26,7 @@ namespace video
 		 * will make next [read] give specified frame.
 		 */
 		bool seek(uint32_t frameOffset);
-		// only used for frame control when playing
-		bool seekTime(double sec);
+
 		uint32_t tell() const;
 		uint32_t getTotalFrames() const;
 
@@ -37,6 +37,9 @@ namespace video
 		const VideoInfo& getVideoInfo() const { return videoInfo; }
 		const std::string& getReadableInfo() const { return readableInfo; }
 	protected:
+		// only used for frame control when playing
+		bool playerSeekTime(double sec);
+		
 		bool send_packet(AVPacket* packet);
 		bool receive_frame(AVFrame* frame);
 
