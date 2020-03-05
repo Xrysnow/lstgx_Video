@@ -297,7 +297,7 @@ bool Decoder::setup(const Size& target_size)
 	}
 	targetSize = Size(width, height);
 	// TODO: sws to YUV420 and convert in shader
-	const auto fmt = AVPixelFormat::AV_PIX_FMT_RGB24;
+	const auto fmt = AV_PIX_FMT_RGB24;
 	auto ret = av_image_alloc(sws_pointers, sws_linesizes,
 		width, height, fmt, 1);
 	if (ret < 0)

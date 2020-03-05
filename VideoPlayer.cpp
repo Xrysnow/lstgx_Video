@@ -187,11 +187,6 @@ void Player::draw(cocos2d::Renderer* renderer, const cocos2d::Mat4 &transform, u
 		}
 		if (texureDirty && vbuf)
 		{
-			//cmdBeforeDraw.func = [this]()
-			//{
-			//	_texture->updateWithData(vbuf, 0, 0, _texture->getPixelsWide(), _texture->getPixelsHigh());
-			//};
-			//renderer->addCommand(&cmdBeforeDraw);		
 			_texture->updateWithData(vbuf, 0, 0, _texture->getPixelsWide(), _texture->getPixelsHigh());
 		}
 	}
